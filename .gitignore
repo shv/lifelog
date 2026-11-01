@@ -129,6 +129,7 @@ celerybeat.pid
 
 # Environments
 .env
+.python-version
 .venv
 env/
 venv/
@@ -174,3 +175,4 @@ cython_debug/
 .pypirc
 
 .idea
+.vscode

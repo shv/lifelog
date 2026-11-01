@@ -8,12 +8,24 @@ package-mode = false
 
 [tool.poetry.dependencies]
 python = "^3.13"
-django = "^5.1.4"
-psycopg2-binary = "^2.9.10"
+django = "^5.2.18"
+psycopg2-binary = "^2.9.13"
 pytz = "^2024.2"
-whitenoise = "^6.9.0"
+whitenoise = "^6.12.0"
 
 [tool.poetry.group.dev.dependencies]
+ruff = "^0.17.3"
+
+[tool.ruff]
+target-version = "py313"
+force-exclude = true
+extend-exclude = [
+    "manage.py",
+    "project/asgi.py",
+    "project/wsgi.py",
+    "**/apps.py",
+    "**/migrations/**",
+]
 
 [build-system]
 requires = ["poetry-core"]

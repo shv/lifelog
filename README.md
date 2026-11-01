@@ -20,6 +20,27 @@ It's better to do this in a virtual environment.
 
 `poetry run python manage.py runserver`
 
+## Ruff
+
+Check code and formatting:
+
+```bash
+poetry run ruff check .
+poetry run ruff format --check .
+```
+
+Format code:
+
+```bash
+poetry run ruff check . --fix
+poetry run ruff format .
+```
+
+Django entry points (`manage.py`, `asgi.py`, `wsgi.py`),
+app configurations (`apps.py`), and migrations are excluded from both linting and
+formatting, including when passed explicitly. Other files, including
+`project/settings.py` and `project/urls.py`, remain eligible.
+
 ## Docker compose
 
 ### Building

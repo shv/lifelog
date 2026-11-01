@@ -6,7 +6,9 @@ class Product(models.Model):
     Product. Contains all information about product's calories, proteins, fats, and carbs.
     """
 
-    title = models.CharField("Title", max_length=150, unique=True, null=False, blank=False)
+    title = models.CharField(
+        "Title", max_length=150, unique=True, null=False, blank=False
+    )
     energy = models.FloatField("Energy", null=False, blank=False)
     proteins = models.FloatField("Proteins", null=False, blank=False)
     fats = models.FloatField("Fats", null=False, blank=False)
@@ -15,7 +17,9 @@ class Product(models.Model):
     salt = models.FloatField("Salt", null=True, blank=True)
     note = models.CharField("Note", max_length=150, null=True, blank=True)
     rate = models.IntegerField("Rate", null=True, blank=True)
-    lactose_free = models.BooleanField("Lactose-free", null=True, blank=True, default=None)
+    lactose_free = models.BooleanField(
+        "Lactose-free", null=True, blank=True, default=None
+    )
     created_at = models.DateTimeField("Created at", auto_now_add=True)
     updated_at = models.DateTimeField("Updated at", auto_now=True)
 
@@ -31,7 +35,7 @@ class Product(models.Model):
         Model configuration
         """
 
-        ordering = ['title']
+        ordering = ("title",)
         verbose_name = "Product"
         verbose_name_plural = "Products"
 
@@ -41,7 +45,9 @@ class DailyIntake(models.Model):
     Daily consumption norm
     """
 
-    title = models.CharField("Title", max_length=150, unique=True, null=False, blank=False)
+    title = models.CharField(
+        "Title", max_length=150, unique=True, null=False, blank=False
+    )
     default = models.BooleanField("Default", null=False, blank=False, default=False)
     energy = models.FloatField("Energy", null=False, blank=False)
     proteins = models.FloatField("Proteins", null=False, blank=False)
@@ -89,8 +95,13 @@ class Day(models.Model):
     """
 
     date = models.DateField("Date", unique=True, null=False, blank=False)
-    daily_intake = models.ForeignKey(DailyIntake, null=True, blank=True, on_delete=models.SET_NULL,
-                                     verbose_name="Daily Intake")
+    daily_intake = models.ForeignKey(
+        DailyIntake,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        verbose_name="Daily Intake",
+    )
     created_at = models.DateTimeField("Created at", auto_now_add=True)
     updated_at = models.DateTimeField("Updated at", auto_now=True)
 
@@ -135,7 +146,9 @@ class MealTitle(models.Model):
     Meal name
     """
 
-    title = models.CharField("Title", max_length=150, unique=True, null=False, blank=False)
+    title = models.CharField(
+        "Title", max_length=150, unique=True, null=False, blank=False
+    )
     created_at = models.DateTimeField("Created at", auto_now_add=True)
     updated_at = models.DateTimeField("Updated at", auto_now=True)
 
@@ -160,8 +173,16 @@ class Meal(models.Model):
     Meal
     """
 
-    title = models.ForeignKey(MealTitle, null=False, blank=False, on_delete=models.RESTRICT, verbose_name="Title")
-    day = models.ForeignKey(Day, null=False, blank=False, on_delete=models.RESTRICT, verbose_name="Day")
+    title = models.ForeignKey(
+        MealTitle,
+        null=False,
+        blank=False,
+        on_delete=models.RESTRICT,
+        verbose_name="Title",
+    )
+    day = models.ForeignKey(
+        Day, null=False, blank=False, on_delete=models.RESTRICT, verbose_name="Day"
+    )
     time = models.TimeField("Time", null=True, blank=True)
     created_at = models.DateTimeField("Created at", auto_now_add=True)
     updated_at = models.DateTimeField("Updated at", auto_now=True)
@@ -207,8 +228,16 @@ class Dish(models.Model):
     Dish in a meal
     """
 
-    product = models.ForeignKey(Product, null=False, blank=False, on_delete=models.RESTRICT, verbose_name="Product")
-    meal = models.ForeignKey(Meal, null=False, blank=False, on_delete=models.RESTRICT, verbose_name="Meal")
+    product = models.ForeignKey(
+        Product,
+        null=False,
+        blank=False,
+        on_delete=models.RESTRICT,
+        verbose_name="Product",
+    )
+    meal = models.ForeignKey(
+        Meal, null=False, blank=False, on_delete=models.RESTRICT, verbose_name="Meal"
+    )
     weight = models.IntegerField("Weight", null=False, blank=False)
     note = models.CharField("Note", max_length=150, null=True, blank=True)
     created_at = models.DateTimeField("Created at", auto_now_add=True)
@@ -255,7 +284,9 @@ class Pill(models.Model):
     Pill.
     """
 
-    title = models.CharField("Title", max_length=150, unique=True, null=False, blank=False)
+    title = models.CharField(
+        "Title", max_length=150, unique=True, null=False, blank=False
+    )
     note = models.CharField("Note", max_length=150, null=True, blank=True)
     created_at = models.DateTimeField("Created at", auto_now_add=True)
     updated_at = models.DateTimeField("Updated at", auto_now=True)
@@ -272,7 +303,7 @@ class Pill(models.Model):
         Model configuration
         """
 
-        ordering = ['title']
+        ordering = ("title",)
         verbose_name = "Pill"
         verbose_name_plural = "Pills"
 
@@ -282,8 +313,12 @@ class TakingPill(models.Model):
     Taking pills
     """
 
-    pill = models.ForeignKey(Pill, null=False, blank=False, on_delete=models.RESTRICT, verbose_name="Pill")
-    day = models.ForeignKey(Day, null=False, blank=False, on_delete=models.RESTRICT, verbose_name="Day")
+    pill = models.ForeignKey(
+        Pill, null=False, blank=False, on_delete=models.RESTRICT, verbose_name="Pill"
+    )
+    day = models.ForeignKey(
+        Day, null=False, blank=False, on_delete=models.RESTRICT, verbose_name="Day"
+    )
     time = models.TimeField("Time", null=True, blank=True)
     is_taken = models.BooleanField("Is taken", null=False, blank=False, default=False)
     note = models.CharField("Note", max_length=150, null=True, blank=True)
@@ -311,7 +346,9 @@ class Note(models.Model):
     Notes for the day
     """
 
-    day = models.ForeignKey(Day, null=False, blank=False, on_delete=models.RESTRICT, verbose_name="Day")
+    day = models.ForeignKey(
+        Day, null=False, blank=False, on_delete=models.RESTRICT, verbose_name="Day"
+    )
     time = models.TimeField("Time", null=True, blank=True)
     note = models.TextField("Note", null=False, blank=False)
     created_at = models.DateTimeField("Created at", auto_now_add=True)
