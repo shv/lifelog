@@ -182,7 +182,10 @@ OAUTH2_PROVIDER = {
     "OAUTH2_VALIDATOR_CLASS": "foodlog.mcp_auth.DiaryOAuthValidator",
     "OIDC_ISS_ENDPOINT": APP_BASE_URL,
     "OAUTH2_PROTECTED_RESOURCE_IDENTIFIER": MCP_RESOURCE_URL,
-    "SCOPES": {"diary:read": "Read diary days"},
+    "SCOPES": {
+        "diary:read": "Read diary days",
+        "notes:write": "Add diary notes",
+    },
     "DEFAULT_SCOPES": ["diary:read"],
     "OAUTH2_RESPONSE_TYPES_SUPPORTED": ["code"],
     "OAUTH2_GRANT_TYPES_SUPPORTED": ["authorization_code", "refresh_token"],

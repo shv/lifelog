@@ -1,12 +1,14 @@
-"""Read diary days and their related entries for MCP."""
+"""Read diary days and add notes through MCP."""
+
+from datetime import datetime
 
 from django.conf import settings
-from django.db import close_old_connections
+from django.db import close_old_connections, transaction
 from django.db.models import F, Prefetch
 from django.utils import timezone
 from mcp.server.mcpserver.exceptions import ToolError
 
-from foodlog.models import Day, Dish, Meal, Note, TakingPill
+from foodlog.models import DailyIntake, Day, Dish, Meal, Note, TakingPill
 
 
 def _totals(record):
@@ -156,6 +158,45 @@ def read_days(start_date=None, end_date=None, limit=31, offset=0):
             "days": [_serialize_day(day) for day in page],
             "has_more": has_more,
             "next_offset": offset + limit if has_more else None,
+        }
+    finally:
+        close_old_connections()
+
+
+def create_note(text, note_date=None, note_time=None):
+    if not text.strip():
+        raise ToolError("Note text must not be empty.")
+    if note_date is not None and note_time is None:
+        raise ToolError(
+            "A date was provided without a time. Ask the user for the time."
+        )
+    if note_time is not None and note_time.tzinfo is not None:
+        raise ToolError("Use local diary time without a timezone offset.")
+
+    now = timezone.localtime()
+    note_date = note_date if note_date is not None else now.date()
+    note_time = note_time if note_time is not None else now.time()
+    if datetime.combine(note_date, note_time) > now.replace(tzinfo=None):
+        raise ToolError("Cannot add a note in the future.")
+
+    close_old_connections()
+    try:
+        with transaction.atomic():
+            default_intake = DailyIntake.objects.filter(default=True).first()
+            day, day_created = Day.objects.get_or_create(
+                date=note_date, defaults={"daily_intake": default_intake}
+            )
+            note = Note.objects.create(day=day, time=note_time, note=text)
+        return {
+            "day_id": day.pk,
+            "date": day.date.isoformat(),
+            "timezone": settings.TIME_ZONE,
+            "day_created": day_created,
+            "note": {
+                "id": note.pk,
+                "time": note.time.isoformat(),
+                "text": note.note,
+            },
         }
     finally:
         close_old_connections()

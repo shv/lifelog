@@ -61,6 +61,18 @@ Dates use `YYYY-MM-DD`. Calendar gaps do not count toward the limit. While
 and `limit`. Start-only pages advance forward; other pages go backward.
 For production, use the `mcp-prod` service.
 
+To add notes, authorize scopes `diary:read notes:write` and call `add_note`:
+
+```json
+{"text": "My note, saved exactly as written."}
+```
+
+Without dates or times it uses the current diary date and time. `note_time` alone
+uses today; `note_date` requires `note_time`. Future timestamps are rejected. A
+missing day is created with the default classification. Text is saved unchanged.
+After deployment, refresh the ChatGPT connection's tools and authorize the new
+`notes:write` permission; existing read-only tokens cannot add notes.
+
 ## Ruff
 
 Check code and formatting:
