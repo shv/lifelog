@@ -181,6 +181,7 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 OAUTH2_PROVIDER = {
     "OAUTH2_VALIDATOR_CLASS": "foodlog.mcp_auth.DiaryOAuthValidator",
     "OIDC_ISS_ENDPOINT": APP_BASE_URL,
+    "OAUTH2_PROTECTED_RESOURCE_IDENTIFIER": MCP_RESOURCE_URL,
     "SCOPES": {"diary:read": "Read diary days"},
     "DEFAULT_SCOPES": ["diary:read"],
     "OAUTH2_RESPONSE_TYPES_SUPPORTED": ["code"],
