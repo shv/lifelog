@@ -76,7 +76,7 @@ class DiaryOAuthValidator(OAuth2Validator):
 
 class DiaryTokenVerifier:
     @sync_to_async
-    def verify_token(self, token: str) -> AccessToken | None:
+    def verify_token(self, token):
         close_old_connections()
         try:
             checksum = hashlib.sha256(token.encode()).hexdigest()

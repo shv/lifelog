@@ -42,8 +42,24 @@ In Django Admin, register an OAuth application owned by your user: grant type
 for ChatGPT. Use the client's exact callback URL and keep **Skip authorization** off.
 
 In Inspector, select **Streamable HTTP**, URL `http://localhost:8010/mcp`, and OAuth.
-Enter the client ID and scope `diary:read`, sign in, then call `get_days` with `{}`
-in **Tools**. For production, use the `mcp-prod` service.
+Enter the client ID and scope `diary:read`, sign in, then call `get_days` in **Tools**:
+
+```json
+{}
+```
+
+The tool reads existing days with classification, notes, medication records, meals,
+and dishes, in the diary timezone. Up to 31 existing days per page, newest first:
+
+- No dates: latest days through today.
+- Only `start_date`: first days from that date through today.
+- Only `end_date`: latest days through that date.
+- Both dates: days in the inclusive range; use the same date for a single day.
+
+Dates use `YYYY-MM-DD`. Calendar gaps do not count toward the limit. While
+`has_more` is true, use `next_offset` as `offset` with the original date parameters
+and `limit`. Start-only pages advance forward; other pages go backward.
+For production, use the `mcp-prod` service.
 
 ## Ruff
 
