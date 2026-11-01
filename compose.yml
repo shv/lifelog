@@ -1,4 +1,26 @@
 services:
+  mcp-dev:
+    profiles:
+      - dev
+    build:
+      context: ./
+      dockerfile: Dockerfile
+    command: ["poetry", "run", "python", "-m", "foodlog.mcp_server"]
+    environment:
+      MCP_HOST: "0.0.0.0"
+      APP_BASE_URL: "${APP_BASE_URL:-http://localhost:8010}"
+      MCP_OWNER_USERNAME: "${MCP_OWNER_USERNAME:-}"
+      DJANGO_SECRET_KEY: "${DJANGO_SECRET_KEY:-}"
+      FOODLOG_BAK_PG_DSN: "postgresql://foodlog:foodlog123@postgres-dev:5432/foodlog_dev"
+    depends_on:
+      - postgres-dev
+    networks:
+      - foodlog_dev_net
+    ports:
+      - "127.0.0.1:8010:8010"
+    volumes:
+      - ./:/code
+
   prod:
     profiles:
       - prod
@@ -13,6 +35,29 @@ services:
       - "0.0.0.0:8889:8000"
     environment:
       - FOODLOG_BAK_PG_DSN=postgresql://foodlog:@postgres-prod:5432/foodlog
+      - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY:-}
+      - APP_BASE_URL=${APP_BASE_URL:-https://lifelog.electro-control-center.ru}
+      - MCP_OWNER_USERNAME=${MCP_OWNER_USERNAME:-}
+    networks:
+      - foodlog_prod_net
+
+  mcp-prod:
+    profiles:
+      - prod
+    build:
+      context: ./
+      dockerfile: Dockerfile
+    command: ["poetry", "run", "python", "-m", "foodlog.mcp_server"]
+    environment:
+      MCP_HOST: "0.0.0.0"
+      APP_BASE_URL: "${APP_BASE_URL:-https://lifelog.electro-control-center.ru}"
+      MCP_OWNER_USERNAME: "${MCP_OWNER_USERNAME:-}"
+      DJANGO_SECRET_KEY: "${DJANGO_SECRET_KEY:-}"
+      FOODLOG_BAK_PG_DSN: "postgresql://foodlog:@postgres-prod:5432/foodlog"
+    depends_on:
+      - postgres-prod
+    ports:
+      - "127.0.0.1:8010:8010"
     networks:
       - foodlog_prod_net
 
@@ -33,6 +78,9 @@ services:
 
     environment:
       - FOODLOG_BAK_PG_DSN=postgresql://foodlog:foodlog123@postgres-dev:5432/foodlog_dev
+      - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY:-}
+      - APP_BASE_URL=${APP_BASE_URL:-http://localhost:8010}
+      - MCP_OWNER_USERNAME=${MCP_OWNER_USERNAME:-}
     networks:
       - foodlog_dev_net
 
@@ -49,6 +97,9 @@ services:
       - postgres-prod
     environment:
       - FOODLOG_BAK_PG_DSN=postgresql://foodlog:@postgres-prod:5432/foodlog
+      - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY:-}
+      - APP_BASE_URL=${APP_BASE_URL:-https://lifelog.electro-control-center.ru}
+      - MCP_OWNER_USERNAME=${MCP_OWNER_USERNAME:-}
     networks:
       - foodlog_prod_net
 
@@ -71,6 +122,7 @@ services:
     image: postgres:17
     profiles:
       - dev
+      - mcp
     environment:
       - POSTGRES_DB=foodlog_dev
       - POSTGRES_USER=foodlog

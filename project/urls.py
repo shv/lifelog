@@ -16,8 +16,22 @@ Including another URLconf
 """
 
 from django.contrib import admin
-from django.urls import path
+from django.urls import include, path
+from oauth2_provider import views as oauth_views
+from oauth2_provider.urls import metadata_urlpatterns
+
+from foodlog.mcp_auth import OwnerAuthorizationView
+
+oauth_urls = [
+    path("authorize/", OwnerAuthorizationView.as_view(), name="authorize"),
+    path("token/", oauth_views.TokenView.as_view(), name="token"),
+    path("revoke_token/", oauth_views.RevokeTokenView.as_view(), name="revoke-token"),
+]
 
 urlpatterns = [
     path("admin/", admin.site.urls),
+    path(
+        "oauth/", include((oauth_urls, "oauth2_provider"), namespace="oauth2_provider")
+    ),
+    *metadata_urlpatterns,
 ]

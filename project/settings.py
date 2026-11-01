@@ -22,7 +22,13 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = "django-insecure-6gl(=l7(ad6_w-2%b_6-a9h)%2c9qwmsjpzo%&+)v^t9b9@hg7"
+SECRET_KEY = os.getenv("DJANGO_SECRET_KEY") or (
+    "django-insecure-6gl(=l7(ad6_w-2%b_6-a9h)%2c9qwmsjpzo%&+)v^t9b9@hg7"
+)
+
+APP_BASE_URL = os.getenv("APP_BASE_URL", "http://localhost:8010").rstrip("/")
+MCP_RESOURCE_URL = f"{APP_BASE_URL}/mcp"
+MCP_OWNER_USERNAME = os.getenv("MCP_OWNER_USERNAME", "")
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = False
@@ -30,7 +36,7 @@ DEBUG = False
 ALLOWED_HOSTS = ["*"]
 
 CSRF_TRUSTED_ORIGINS = [
-    "https://lifelog.electro-control-center.ru",
+    APP_BASE_URL,
     "http://localhost:8889",
 ]
 
@@ -42,6 +48,7 @@ DB_DSN = os.getenv(
 
 INSTALLED_APPS = [
     "foodlog.apps.FoodlogConfig",
+    "oauth2_provider",
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -165,3 +172,28 @@ STATIC_URL = "static/"
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+OAUTH2_PROVIDER = {
+    "OAUTH2_VALIDATOR_CLASS": "foodlog.mcp_auth.DiaryOAuthValidator",
+    "OIDC_ISS_ENDPOINT": APP_BASE_URL,
+    "SCOPES": {"diary:read": "Read diary days"},
+    "DEFAULT_SCOPES": ["diary:read"],
+    "OAUTH2_RESPONSE_TYPES_SUPPORTED": ["code"],
+    "OAUTH2_GRANT_TYPES_SUPPORTED": ["authorization_code", "refresh_token"],
+    "OAUTH2_TOKEN_ENDPOINT_AUTH_METHODS_SUPPORTED": [
+        "none",
+        "client_secret_post",
+        "client_secret_basic",
+    ],
+    "PKCE_REQUIRED": True,
+    "ACCESS_TOKEN_EXPIRE_SECONDS": 3600,
+    "REFRESH_TOKEN_EXPIRE_SECONDS": 30 * 24 * 60 * 60,
+    "ROTATE_REFRESH_TOKEN": True,
+    "REFRESH_TOKEN_REUSE_PROTECTION": True,
+    "COMPLIANT_BCP_RFC9700_IMPLICIT_GRANT": True,
+    "COMPLIANT_BCP_RFC9700_PASSWORD_GRANT": True,
+    "COMPLIANT_BCP_RFC9700_PKCE_METHOD": True,
+    "COMPLIANT_BCP_RFC9700_ACCESS_TOKEN_TRANSPORT": True,
+    "COMPLIANT_BCP_RFC9700_AUTHZ_RESPONSE_ISS": True,
+    "COMPLIANT_BCP_RFC9700_TOKEN_STORAGE": True,
+}

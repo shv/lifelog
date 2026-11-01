@@ -12,6 +12,8 @@ django = "^5.2.18"
 psycopg2-binary = "^2.9.13"
 pytz = "^2024.2"
 whitenoise = "^6.12.0"
+mcp = "^2.3.0"
+django-oauth-toolkit = ">=3.4.1,<4"
 
 [tool.poetry.group.dev.dependencies]
 ruff = "^0.17.3"
