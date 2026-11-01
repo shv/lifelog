@@ -54,7 +54,7 @@ def create_server():
         description=(
             "Read a private personal diary: day classifications, notes, "
             "medication records, meals, and dishes for a date or date range. "
-            "Add notes using the user's exact text."
+            "Add notes preserving the user's wording."
         ),
         instructions=(
             "get_days accepts optional start_date and end_date. With no dates it "
@@ -72,6 +72,8 @@ def create_server():
             "Use add_note only when the user asks to save a note. Preserve the "
             "user's diary text verbatim, including dictated wording: do not "
             "paraphrase, correct, translate, summarize, or add interpretations. "
+            "The server capitalizes the note's first letter; this is the only "
+            "automatic text correction. Leave the rest unchanged. "
             "If the note's text is unclear, ask the user. Without date and time, "
             "omit both so the server uses its current local date and time. "
             "With time only, omit the date to use today. With a date but no time, "
@@ -146,19 +148,22 @@ def add_note(
     note_date: date | None = None,
     note_time: time | None = None,
 ) -> dict[str, object]:
-    """Save a new diary note using the user's exact words, without rewriting.
+    """Save a new diary note preserving the user's wording.
 
     text is the diary content verbatim, including punctuation and line breaks.
+    The server capitalizes the first letter, preserving leading spaces or quotes.
+    All other text is kept unchanged.
     Do not polish, paraphrase, correct spelling, translate, summarize, or interpret
     the user's text. If the intended note text is unclear, ask before saving.
     With neither note_date nor note_time, the server uses its current local date
     and time. With note_time only, it uses today. note_date uses YYYY-MM-DD and
     note_time uses HH:MM or HH:MM:SS in the diary timezone, without a UTC offset.
+    Saved times have second precision; fractional seconds are discarded.
     Resolve relative dates such as yesterday in that timezone. If a date is given
     without a time, ask the user for the time; never guess it. Future timestamps
     and blank notes are rejected. Creates a missing day with the default day
     classification, otherwise keeps the existing day unchanged. Returns the saved
-    note's ID, exact text, date, time, timezone and whether the day was created.
+    note's ID, saved text, date, time, timezone and whether the day was created.
     Requires notes:write in addition to diary:read. Each successful call creates
     one note; after an uncertain result, check get_days before retrying.
     """

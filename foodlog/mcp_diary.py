@@ -176,8 +176,14 @@ def create_note(text, note_date=None, note_time=None):
     now = timezone.localtime()
     note_date = note_date if note_date is not None else now.date()
     note_time = note_time if note_time is not None else now.time()
+    note_time = note_time.replace(microsecond=0)
     if datetime.combine(note_date, note_time) > now.replace(tzinfo=None):
         raise ToolError("Cannot add a note in the future.")
+
+    for index, character in enumerate(text):
+        if character.isalpha():
+            text = text[:index] + character.upper() + text[index + 1 :]
+            break
 
     close_old_connections()
     try:
