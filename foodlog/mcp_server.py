@@ -1,3 +1,4 @@
+import json
 import os
 from datetime import date, time
 from typing import Annotated
@@ -21,7 +22,14 @@ os.environ.setdefault("DJANGO_SETTINGS_MODULE", "project.settings")
 django_app = get_asgi_application()
 
 from foodlog.mcp_auth import DiaryTokenVerifier
-from foodlog.mcp_diary import create_note, create_pill_intake, read_days, read_pills
+from foodlog.mcp_diary import (
+    complete_pill_intake,
+    create_note,
+    create_pill_intake,
+    read_days,
+    read_nearby_pill_intakes,
+    read_pills,
+)
 
 if not settings.MCP_OWNER_USERNAME:
     raise ImproperlyConfigured(
@@ -94,11 +102,35 @@ def create_server():
             "If taken versus planned is unclear, ask the user. Medication date "
             "and time follow the same rules as notes, except future timestamps "
             "are allowed for plans only. Preserve the user's dosage or comment "
-            "in note; never infer a dose. add_pill_intake requires pills:write. "
-            "Each call creates a record; do not retry an uncertain write without "
-            "checking get_days. Existing records cannot be edited or deleted."
+            "in note; never infer a dose. Before recording a completed intake, "
+            "call get_nearby_pill_intakes for this exact pill and actual intake "
+            "date/time. The matching window is three hours before or after, "
+            "including adjacent days. If this pill is already recorded as taken "
+            "nearby, tell the user the recorded date, time and comment and ask "
+            "whether this is another dose or the same intake. Do not silently "
+            "add or complete anything. With one matching plan, prefer marking "
+            "that plan through mark_pill_taken rather than creating a duplicate. "
+            "With multiple plans, ask which one. With no plan or taken record, "
+            "use add_pill_intake. Plans and duplicate checks are only for the "
+            "same pill ID, never for other medications. An empty plan comment "
+            "can receive the user's comment without asking. If the plan already "
+            "has a comment, compare it with the reported dose. If they clearly "
+            "agree, retain relevant planned details and add the actual comment. "
+            "If the dose conflicts or is ambiguous, ask whether this is the same "
+            "plan with a changed dose or an additional intake. Do not assume "
+            "that 'a pill' means 'half a pill'. After the user confirms a changed "
+            "dose for the same plan, mark it taken and pass the confirmed actual "
+            "comment to replace the conflicting planned comment. Omitted note "
+            "preserves the existing comment. Only after explicit confirmation "
+            "of a separate extra intake use add_pill_intake(separate_intake=true). "
+            "If another taken record is nearby but the user confirms completion "
+            "of a different pending plan, use mark_pill_taken(confirm_repeat=true). "
+            "An already completed record cannot be marked taken again, even with "
+            "that flag. Medication writes require pills:write. Do not retry an "
+            "uncertain write without checking records. Notes and catalogue "
+            "entries cannot be edited; no records can be deleted."
         ),
-        version="0.5.0",
+        version="0.6.0",
         token_verifier=DiaryTokenVerifier(),
         auth=AuthSettings(
             issuer_url=settings.APP_BASE_URL,
@@ -130,6 +162,18 @@ def _require_scope(scope, action):
         ],
         _meta={"mcp/www_authenticate": [challenge]},
     )
+
+
+def _pill_write_result(result):
+    if result["status"] == "needs_confirmation":
+        return CallToolResult(
+            isError=True,
+            content=[
+                TextContent(type="text", text=json.dumps(result, ensure_ascii=False))
+            ],
+            structuredContent=result,
+        )
+    return result
 
 
 @mcp.tool(
@@ -235,7 +279,7 @@ def get_pills(include_inactive: bool = False) -> dict[str, object]:
     },
     annotations=ToolAnnotations(
         readOnlyHint=False,
-        destructiveHint=False,
+        destructiveHint=True,
         idempotentHint=False,
         openWorldHint=False,
     ),
@@ -246,8 +290,9 @@ def add_pill_intake(
     note: Annotated[str | None, Field(max_length=150)] = None,
     intake_date: date | None = None,
     intake_time: time | None = None,
+    separate_intake: Annotated[bool, Field(strict=True)] = False,
 ) -> dict[str, object]:
-    """Create one record for a pill the user has taken or plans to take.
+    """Record a taken pill, reusing a nearby plan when possible, or create a plan.
 
     First call get_pills and use its ID for one unambiguous active pill. If the
     spoken name is missing or ambiguous, ask the user to clarify instead of guessing.
@@ -263,14 +308,116 @@ def add_pill_intake(
     note is the user's optional dosage/comment, at most 150 characters, saved
     unchanged. Do not invent or reinterpret a dose; if the comment is too long,
     ask the user for a shorter version instead of silently truncating it.
-    A missing day is created with its default classification. Each successful call
-    adds a record; it does not update an existing planned intake. After an uncertain
-    result, check get_days before retrying. Requires pills:write and diary:read.
+    For is_taken=true first inspect get_nearby_pill_intakes. The server also checks
+    this exact pill within plus/minus three hours, including neighboring days.
+    A nearby completed intake returns an error with its recorded date/time/comment:
+    tell the user it was already taken and ask if this is a repeat or the same record.
+    A unique plan is marked taken using the actual date/time, keeping the same record
+    ID. An empty planned comment accepts the user's note. A differing nonempty plan
+    comment or multiple plans returns a review error without writing anything.
+    Review the returned comments: if the dose conflicts or is ambiguous, ask the user;
+    if clearly compatible, preserve planned details and add the actual comment.
+    Then use mark_pill_taken for the chosen plan with the agreed comment. If the user
+    confirms a changed dose for that plan, pass the confirmed actual note to replace
+    its old comment. Only after explicit confirmation of a separate additional dose
+    set separate_intake=true: this skips plan reuse and the nearby duplicate check.
+    is_taken=false always creates a pending plan. With no nearby record, creates
+    a new intake. A missing actual day gets its default classification. The result
+    status distinguishes created, marked_taken and needs_confirmation. Never retry
+    an uncertain write without checking records. Requires pills:write and diary:read.
     """
     error = _require_scope("pills:write", "Recording medication")
     if error is not None:
         return error
-    return create_pill_intake(pill_id, is_taken, note, intake_date, intake_time)
+    return _pill_write_result(
+        create_pill_intake(
+            pill_id, is_taken, note, intake_date, intake_time, separate_intake
+        )
+    )
+
+
+@mcp.tool(
+    title="Find nearby pill plans and completed intakes",
+    meta={"securitySchemes": [{"type": "oauth2", "scopes": ["diary:read"]}]},
+    annotations=ToolAnnotations(
+        readOnlyHint=True, destructiveHint=False, openWorldHint=False
+    ),
+)
+def get_nearby_pill_intakes(
+    pill_id: Annotated[int, Field(ge=1)],
+    intake_date: date | None = None,
+    intake_time: time | None = None,
+) -> dict[str, object]:
+    """Find this exact pill's plans and completed intakes within plus/minus 3 hours.
+
+    Call get_pills to identify an unambiguous active pill first. Only records for
+    pill_id are returned, sorted by distance from the target time, across dates.
+    Without date/time, search around now in the diary timezone; time only is today,
+    and an explicit YYYY-MM-DD date requires HH:MM or HH:MM:SS time without an offset.
+    Unknown record times cannot be matched. This read-only search may inspect future
+    times too. planned_intakes and taken_intakes include IDs, dates, times and comments.
+    Before reporting a completed intake, check both lists. If a completed record is
+    nearby, tell the user when it was recorded and ask whether this is another dose.
+    Prefer a matching plan over a new record. Ask which plan when several match.
+    Compare nonempty planned comments with the user's words: ask about conflicting
+    or ambiguous doses; never guess. An empty planned comment may receive the user's
+    comment. Use mark_pill_taken for a reviewed plan, or add_pill_intake if none exists.
+    The tool never writes, and records of other pills do not affect this search.
+    """
+    return read_nearby_pill_intakes(pill_id, intake_date, intake_time)
+
+
+@mcp.tool(
+    title="Mark a selected pill plan as taken",
+    meta={
+        "securitySchemes": [{"type": "oauth2", "scopes": ["diary:read", "pills:write"]}]
+    },
+    annotations=ToolAnnotations(
+        readOnlyHint=False,
+        destructiveHint=True,
+        idempotentHint=True,
+        openWorldHint=False,
+    ),
+)
+def mark_pill_taken(
+    pill_id: Annotated[int, Field(ge=1)],
+    intake_id: Annotated[int, Field(ge=1)],
+    note: Annotated[str | None, Field(max_length=150)] = None,
+    intake_date: date | None = None,
+    intake_time: time | None = None,
+    confirm_repeat: Annotated[bool, Field(strict=True)] = False,
+) -> dict[str, object]:
+    """Mark a reviewed pending record of this exact pill as taken, keeping its ID.
+
+    Inspect get_nearby_pill_intakes first, including its completed records and all
+    planned comments. If multiple plans match, ask the user which one. If the plan's
+    dose/comment conflicts with the user's report, or the dose is unclear, ask whether
+    this is the same plan with a changed dose or a separate intake. Do not assume
+    a whole pill and a half-pill are equivalent. For clearly compatible comments,
+    keep relevant planned details and add the user's comment. After confirmation of
+    a changed dose in the same plan, pass the confirmed actual comment in note.
+    Omitted/null note preserves the plan's comment; a supplied note replaces it,
+    including an explicitly agreed empty string. Never silently drop planned details.
+    pill_id and intake_id must refer to the same active pill and existing record.
+    Actual time follows note rules: neither date nor time means now, time only means
+    today, a date without time is an error; future actual timestamps are forbidden.
+    The record moves to the actual day/time, including across midnight. A missing
+    actual day is created with its default classification. A nearby completed intake
+    returns an error until the user explicitly confirms another dose and you set
+    confirm_repeat=true. An already taken target always returns an error showing its
+    recorded date/time; that flag cannot complete it twice. Use separate_intake=true
+    on add_pill_intake only for an explicitly confirmed separate new intake.
+    Returns the saved record and its previous planned date/time/comment. Requires
+    pills:write and diary:read. Does not edit notes or catalogue entries or delete data.
+    """
+    error = _require_scope("pills:write", "Completing a planned medication intake")
+    if error is not None:
+        return error
+    return _pill_write_result(
+        complete_pill_intake(
+            pill_id, intake_id, note, intake_date, intake_time, confirm_repeat
+        )
+    )
 
 
 host = os.getenv("MCP_HOST", "127.0.0.1")

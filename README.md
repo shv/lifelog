@@ -85,8 +85,23 @@ optional comment (up to 150 characters). `intake_date` and `intake_time` follow
 the note date/time rules, except that future timestamps are allowed for plans.
 Missing or ambiguous pill names must be clarified before recording.
 
-For this update, run `python manage.py migrate` before starting the updated Django
-and MCP processes, refresh the connection's tools and authorize `pills:write`.
+Before recording a completed intake, `get_nearby_pill_intakes` finds plans and
+completed records for that exact pill within ±3 hours, across adjacent dates.
+`add_pill_intake` also checks this window: it completes a unique matching plan,
+creates a record if none exists, or returns a clarification error without writing.
+Multiple plans or a differing nonempty planned comment require review. An empty
+planned comment accepts the new comment. Conflicting or ambiguous doses must be
+clarified; clearly compatible comments can be combined without dropping details.
+
+`mark_pill_taken` completes the selected `pill_id`/`intake_id` and moves it to the
+actual date/time. Omitted `note` preserves the comment; a supplied `note` replaces
+it after review/confirmation. Already-taken records return an error with their
+recorded date/time. Only after the user confirms an additional dose may
+`separate_intake=true` create a separate record, or `confirm_repeat=true` complete
+a different pending plan despite a nearby taken record. No new OAuth scope is needed.
+
+Apply pending migrations with `python manage.py migrate` before starting updated
+Django and MCP processes, refresh the connection's tools and authorize `pills:write`.
 
 ## Ruff
 

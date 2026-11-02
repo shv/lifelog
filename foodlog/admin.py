@@ -23,7 +23,6 @@ from .models import (
 logger = logging.getLogger(__name__)
 
 admin.site.register(MealTitle)
-admin.site.register(Pill)
 
 
 class DayCopyForm(forms.ModelForm):
@@ -49,6 +48,13 @@ class MealInline(admin.TabularInline):
     extra = 1
     inlines = (DishInline,)  # Nested inlines for displaying Dish within Meal
     ordering = ("time", "id")
+
+
+@admin.register(Pill)
+class PillAdmin(admin.ModelAdmin):
+    list_display = ("title", "is_active", "note")
+
+    ordering = ("title",)
 
 
 class TakingPillInline(
