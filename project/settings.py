@@ -185,6 +185,7 @@ OAUTH2_PROVIDER = {
     "SCOPES": {
         "diary:read": "Read diary days",
         "notes:write": "Add diary notes",
+        "pills:write": "Record taken or planned medication",
     },
     "DEFAULT_SCOPES": ["diary:read"],
     "OAUTH2_RESPONSE_TYPES_SUPPORTED": ["code"],

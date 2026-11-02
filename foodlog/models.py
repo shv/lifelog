@@ -287,6 +287,7 @@ class Pill(models.Model):
     title = models.CharField(
         "Title", max_length=150, unique=True, null=False, blank=False
     )
+    is_active = models.BooleanField("Active", default=True)
     note = models.CharField("Note", max_length=150, null=True, blank=True)
     created_at = models.DateTimeField("Created at", auto_now_add=True)
     updated_at = models.DateTimeField("Updated at", auto_now=True)

@@ -1,4 +1,4 @@
-"""Read diary days and add notes through MCP."""
+"""Read diary days and record notes and medications through MCP."""
 
 from datetime import datetime
 
@@ -8,7 +8,7 @@ from django.db.models import F, Prefetch
 from django.utils import timezone
 from mcp.server.mcpserver.exceptions import ToolError
 
-from foodlog.models import DailyIntake, Day, Dish, Meal, Note, TakingPill
+from foodlog.models import DailyIntake, Day, Dish, Meal, Note, Pill, TakingPill
 
 
 def _totals(record):
@@ -59,6 +59,7 @@ def _serialize_day(day):
                     "id": taking.pill_id,
                     "title": taking.pill.title,
                     "note": taking.pill.note,
+                    "is_active": taking.pill.is_active,
                 },
                 "is_taken": taking.is_taken,
                 "note": taking.note,
@@ -163,22 +164,36 @@ def read_days(start_date=None, end_date=None, limit=31, offset=0):
         close_old_connections()
 
 
-def create_note(text, note_date=None, note_time=None):
-    if not text.strip():
-        raise ToolError("Note text must not be empty.")
-    if note_date is not None and note_time is None:
+def _resolve_entry_time(entry_date, entry_time, allow_future=False):
+    if entry_date is not None and entry_time is None:
         raise ToolError(
             "A date was provided without a time. Ask the user for the time."
         )
-    if note_time is not None and note_time.tzinfo is not None:
+    if entry_time is not None and entry_time.tzinfo is not None:
         raise ToolError("Use local diary time without a timezone offset.")
 
     now = timezone.localtime()
-    note_date = note_date if note_date is not None else now.date()
-    note_time = note_time if note_time is not None else now.time()
-    note_time = note_time.replace(microsecond=0)
-    if datetime.combine(note_date, note_time) > now.replace(tzinfo=None):
-        raise ToolError("Cannot add a note in the future.")
+    entry_date = entry_date if entry_date is not None else now.date()
+    entry_time = entry_time if entry_time is not None else now.time()
+    entry_time = entry_time.replace(microsecond=0)
+    if not allow_future and datetime.combine(entry_date, entry_time) > now.replace(
+        tzinfo=None
+    ):
+        raise ToolError("Cannot record an event as completed in the future.")
+    return entry_date, entry_time
+
+
+def _get_or_create_day(entry_date):
+    default_intake = DailyIntake.objects.filter(default=True).first()
+    return Day.objects.get_or_create(
+        date=entry_date, defaults={"daily_intake": default_intake}
+    )
+
+
+def create_note(text, note_date=None, note_time=None):
+    if not text.strip():
+        raise ToolError("Note text must not be empty.")
+    note_date, note_time = _resolve_entry_time(note_date, note_time)
 
     for index, character in enumerate(text):
         if character.isalpha():
@@ -188,10 +203,7 @@ def create_note(text, note_date=None, note_time=None):
     close_old_connections()
     try:
         with transaction.atomic():
-            default_intake = DailyIntake.objects.filter(default=True).first()
-            day, day_created = Day.objects.get_or_create(
-                date=note_date, defaults={"daily_intake": default_intake}
-            )
+            day, day_created = _get_or_create_day(note_date)
             note = Note.objects.create(day=day, time=note_time, note=text)
         return {
             "day_id": day.pk,
@@ -202,6 +214,73 @@ def create_note(text, note_date=None, note_time=None):
                 "id": note.pk,
                 "time": note.time.isoformat(),
                 "text": note.note,
+            },
+        }
+    finally:
+        close_old_connections()
+
+
+def read_pills(include_inactive=False):
+    close_old_connections()
+    try:
+        pills = Pill.objects.all()
+        if not include_inactive:
+            pills = pills.filter(is_active=True)
+        return {
+            "pills": list(
+                pills.order_by("title", "pk").values("id", "title", "note", "is_active")
+            )
+        }
+    finally:
+        close_old_connections()
+
+
+def create_pill_intake(
+    pill_id, is_taken, note=None, intake_date=None, intake_time=None
+):
+    if not isinstance(is_taken, bool):
+        raise ToolError("is_taken must be true for a taken pill or false for a plan.")
+    if note is not None and len(note) > 150:
+        raise ToolError("The medication comment must be at most 150 characters.")
+    intake_date, intake_time = _resolve_entry_time(
+        intake_date, intake_time, allow_future=not is_taken
+    )
+
+    close_old_connections()
+    try:
+        with transaction.atomic():
+            try:
+                pill = Pill.objects.select_for_update().get(pk=pill_id)
+            except Pill.DoesNotExist:
+                raise ToolError(
+                    "Pill not found. Use get_pills and ask the user to clarify the name "
+                    "or add the pill in Django Admin."
+                ) from None
+            if not pill.is_active:
+                raise ToolError(
+                    "This pill is inactive. Use get_pills and ask the user which "
+                    "active pill they mean. The catalogue is managed in Django Admin."
+                )
+            day, day_created = _get_or_create_day(intake_date)
+            taking = TakingPill.objects.create(
+                pill=pill, day=day, time=intake_time, is_taken=is_taken, note=note
+            )
+        return {
+            "day_id": day.pk,
+            "date": day.date.isoformat(),
+            "timezone": settings.TIME_ZONE,
+            "day_created": day_created,
+            "taking_pill": {
+                "id": taking.pk,
+                "time": taking.time.isoformat(),
+                "pill": {
+                    "id": pill.pk,
+                    "title": pill.title,
+                    "note": pill.note,
+                    "is_active": pill.is_active,
+                },
+                "is_taken": taking.is_taken,
+                "note": taking.note,
             },
         }
     finally:

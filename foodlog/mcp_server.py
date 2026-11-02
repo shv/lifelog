@@ -21,7 +21,7 @@ os.environ.setdefault("DJANGO_SETTINGS_MODULE", "project.settings")
 django_app = get_asgi_application()
 
 from foodlog.mcp_auth import DiaryTokenVerifier
-from foodlog.mcp_diary import create_note, read_days
+from foodlog.mcp_diary import create_note, create_pill_intake, read_days, read_pills
 
 if not settings.MCP_OWNER_USERNAME:
     raise ImproperlyConfigured(
@@ -54,7 +54,8 @@ def create_server():
         description=(
             "Read a private personal diary: day classifications, notes, "
             "medication records, meals, and dishes for a date or date range. "
-            "Add notes preserving the user's wording."
+            "Add notes preserving the user's wording, and record taken or planned "
+            "medication from the existing pill catalogue."
         ),
         instructions=(
             "get_days accepts optional start_date and end_date. With no dates it "
@@ -81,10 +82,23 @@ def create_server():
             f"dates in the diary timezone ({settings.TIME_ZONE}). Future notes "
             "are rejected. add_note requires notes:write and creates the day "
             "if needed. Do not automatically retry an uncertain write; first "
-            "check whether the note was saved to avoid duplicates. Existing "
-            "notes and other records cannot be edited or deleted."
+            "check whether the note was saved to avoid duplicates. "
+            "Before add_pill_intake, call get_pills and select an active pill by "
+            "its catalogue ID. Spoken names may be misheard: if no single clear "
+            "match exists, ask the user which pill they mean. Never invent IDs "
+            "or silently choose between similar names or formulations. If the "
+            "pill is missing, ask the user to add it in Django Admin. The pill "
+            "catalogue and active flags are managed only by the user in Admin. "
+            "Set is_taken=true only when the user reports having taken the pill. "
+            "For a planned intake use is_taken=false, including future plans. "
+            "If taken versus planned is unclear, ask the user. Medication date "
+            "and time follow the same rules as notes, except future timestamps "
+            "are allowed for plans only. Preserve the user's dosage or comment "
+            "in note; never infer a dose. add_pill_intake requires pills:write. "
+            "Each call creates a record; do not retry an uncertain write without "
+            "checking get_days. Existing records cannot be edited or deleted."
         ),
-        version="0.4.0",
+        version="0.5.0",
         token_verifier=DiaryTokenVerifier(),
         auth=AuthSettings(
             issuer_url=settings.APP_BASE_URL,
@@ -96,6 +110,26 @@ def create_server():
 
 
 mcp = create_server()
+
+
+def _require_scope(scope, action):
+    token = get_access_token()
+    if token is not None and scope in token.scopes:
+        return None
+    challenge = (
+        f'Bearer error="insufficient_scope", scope="diary:read {scope}", '
+        f'resource_metadata="{build_resource_metadata_url(settings.MCP_RESOURCE_URL)}"'
+    )
+    return CallToolResult(
+        isError=True,
+        content=[
+            TextContent(
+                type="text",
+                text=f"{action} requires {scope}. Authorize this permission first.",
+            )
+        ],
+        _meta={"mcp/www_authenticate": [challenge]},
+    )
 
 
 @mcp.tool(
@@ -167,24 +201,76 @@ def add_note(
     Requires notes:write in addition to diary:read. Each successful call creates
     one note; after an uncertain result, check get_days before retrying.
     """
-    token = get_access_token()
-    if token is None or "notes:write" not in token.scopes:
-        challenge = (
-            'Bearer error="insufficient_scope", scope="diary:read notes:write", '
-            f'resource_metadata="{build_resource_metadata_url(settings.MCP_RESOURCE_URL)}"'
-        )
-        return CallToolResult(
-            isError=True,
-            content=[
-                TextContent(
-                    type="text",
-                    text="Adding notes requires notes:write. Authorize this permission first.",
-                )
-            ],
-            _meta={"mcp/www_authenticate": [challenge]},
-        )
-
+    error = _require_scope("notes:write", "Adding notes")
+    if error is not None:
+        return error
     return create_note(text, note_date, note_time)
+
+
+@mcp.tool(
+    title="Get pill catalogue",
+    meta={"securitySchemes": [{"type": "oauth2", "scopes": ["diary:read"]}]},
+    annotations=ToolAnnotations(
+        readOnlyHint=True, destructiveHint=False, openWorldHint=False
+    ),
+)
+def get_pills(include_inactive: bool = False) -> dict[str, object]:
+    """List pills from the user's catalogue with IDs, names, comments and active flags.
+
+    By default returns all active pills, sorted by name. Set include_inactive=true
+    to also inspect archived pills; they remain in historical diary records, but
+    cannot be selected for a new intake. Call this before add_pill_intake. Match
+    the user's spoken name to one unambiguous active entry. Never guess between
+    similar names, formulations or misheard words: ask the user to clarify. If
+    no match exists, ask the user to add the pill manually in Django Admin.
+    This tool never creates, edits, archives or deletes catalogue entries.
+    """
+    return read_pills(include_inactive)
+
+
+@mcp.tool(
+    title="Record taken or planned pill",
+    meta={
+        "securitySchemes": [{"type": "oauth2", "scopes": ["diary:read", "pills:write"]}]
+    },
+    annotations=ToolAnnotations(
+        readOnlyHint=False,
+        destructiveHint=False,
+        idempotentHint=False,
+        openWorldHint=False,
+    ),
+)
+def add_pill_intake(
+    pill_id: Annotated[int, Field(ge=1)],
+    is_taken: Annotated[bool, Field(strict=True)],
+    note: Annotated[str | None, Field(max_length=150)] = None,
+    intake_date: date | None = None,
+    intake_time: time | None = None,
+) -> dict[str, object]:
+    """Create one record for a pill the user has taken or plans to take.
+
+    First call get_pills and use its ID for one unambiguous active pill. If the
+    spoken name is missing or ambiguous, ask the user to clarify instead of guessing.
+    Unknown or inactive pill IDs are rejected. Only the user manages the catalogue
+    in Django Admin; this tool cannot create pills or change their active flags.
+    is_taken is required: true means the user reports a completed intake, false
+    means a plan. Ask if the user's intent is unclear. Future date-times are allowed
+    only when is_taken=false. Never mark a future plan as already taken.
+    Without intake_date and intake_time, use now in the diary timezone. Time only
+    means today. An explicit date requires a time: ask the user instead of guessing.
+    Dates use YYYY-MM-DD; times use HH:MM or HH:MM:SS without a timezone offset,
+    saved to second precision. Relative dates use the diary timezone.
+    note is the user's optional dosage/comment, at most 150 characters, saved
+    unchanged. Do not invent or reinterpret a dose; if the comment is too long,
+    ask the user for a shorter version instead of silently truncating it.
+    A missing day is created with its default classification. Each successful call
+    adds a record; it does not update an existing planned intake. After an uncertain
+    result, check get_days before retrying. Requires pills:write and diary:read.
+    """
+    error = _require_scope("pills:write", "Recording medication")
+    if error is not None:
+        return error
+    return create_pill_intake(pill_id, is_taken, note, intake_date, intake_time)
 
 
 host = os.getenv("MCP_HOST", "127.0.0.1")

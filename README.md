@@ -74,6 +74,20 @@ capitalized; the rest of the text is saved unchanged.
 After deployment, refresh the ChatGPT connection's tools and authorize the new
 `notes:write` permission; existing read-only tokens cannot add notes.
 
+`get_pills` returns the active pill catalogue; `include_inactive=true` also shows
+archived entries. Manage pills and their **Active for external APIs** checkbox in
+Django Admin. This flag does not restrict viewing or selecting pills in Admin.
+Existing pills are active by default after applying the migration.
+
+`add_pill_intake` requires `diary:read pills:write`, a `pill_id` from that catalogue,
+and `is_taken`: `true` for a completed intake, `false` for a plan. `note` holds the
+optional comment (up to 150 characters). `intake_date` and `intake_time` follow
+the note date/time rules, except that future timestamps are allowed for plans.
+Missing or ambiguous pill names must be clarified before recording.
+
+For this update, run `python manage.py migrate` before starting the updated Django
+and MCP processes, refresh the connection's tools and authorize `pills:write`.
+
 ## Ruff
 
 Check code and formatting:
